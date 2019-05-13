@@ -8,6 +8,7 @@ import com.shtrih.fiscalprinter.SMFiscalPrinter;
 import com.shtrih.fiscalprinter.TLVParser;
 import com.shtrih.fiscalprinter.command.AmountItem;
 import com.shtrih.fiscalprinter.command.CloseRecParams;
+import com.shtrih.fiscalprinter.command.EndFiscalReceipt;
 import com.shtrih.fiscalprinter.command.FSCloseReceipt;
 import com.shtrih.fiscalprinter.command.FSReceiptDiscount;
 import com.shtrih.fiscalprinter.command.PriceItem;
@@ -20,6 +21,7 @@ import com.shtrih.util.Localizer;
 import com.shtrih.util.MathUtils;
 import com.shtrih.util.MethodParameter;
 import com.shtrih.util.StringUtils;
+import com.shtrih.util.SysUtils;
 
 import java.util.Vector;
 
@@ -30,6 +32,7 @@ import jpos.JposException;
 import static com.shtrih.fiscalprinter.command.PrinterConst.SMFP_EFPTR_NOT_SUPPORTED;
 import static com.shtrih.fiscalprinter.command.PrinterConst.SMFP_STATION_REC;
 import com.shtrih.jpos.fiscalprinter.FptrParameters;
+import com.shtrih.jpos.fiscalprinter.SmFptrConst;
 
 public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
 
@@ -88,7 +91,7 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
         disablePrint = false;
         messages.clear();
         cancelled = false;
-        
+
         getParams().itemTaxAmount = null;
         getParams().itemTotalAmount = null;
     }
@@ -98,10 +101,9 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
         getDevice().printFSHeader();
 
         if (getParams().openReceiptOnBegin
-                || (getParams().writeTagMode == FptrParameters.WRITE_TAG_MODE_BEFORE_ITEMS)
+                || (getParams().writeTagMode == SmFptrConst.WRITE_TAG_MODE_BEFORE_ITEMS)
                 || (getParams().ReceiptTemplateEnabled)) {
             openReceipt(true);
-            getPrinter().openReceipt(receiptType);
         }
     }
 
@@ -112,6 +114,7 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
                     receiptType = PrinterConst.SMFP_RECTYPE_RETSALE;
                 }
             }
+            getPrinter().openReceipt(receiptType);
             isOpened = true;
         }
     }
@@ -284,7 +287,7 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
                 PrintItem printItem = (PrintItem) item;
                 printItem.print(getPrinter().getPrinter());
             }
-            if (getParams().writeTagMode == FptrParameters.WRITE_TAG_MODE_IN_PLACE) {
+            if (getParams().writeTagMode == SmFptrConst.WRITE_TAG_MODE_IN_PLACE) {
                 printTLVItem(item);
             }
         }
@@ -319,7 +322,7 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
                 PrintItem printItem = (PrintItem) item;
                 printItem.print(getPrinter().getPrinter());
             }
-            if (getParams().writeTagMode == FptrParameters.WRITE_TAG_MODE_IN_PLACE) {
+            if (getParams().writeTagMode == SmFptrConst.WRITE_TAG_MODE_IN_PLACE) {
                 printTLVItem(item);
             }
         }
@@ -402,6 +405,55 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
         }
     }
 
+    /*
+    88.Оборот по налогу А с продаж в чеке                       : 0.00
+    89.Оборот по налогу А с покупок в чеке                      : 0.00
+    90.Оборот по налогу А с возврата продаж в чеке              : 0.00
+    91.Оборот по налогу А с возврата покупок в чеке             : 0.00
+    92.Оборот по налогу Б с продаж в чеке                       : 0.00
+    93.Оборот по налогу Б с покупок в чеке                      : 0.00
+    94.Оборот по налогу Б с возврата продаж в чеке              : 0.00
+    95.Оборот по налогу Б с возврата покупок в чеке             : 0.00
+    96.Оборот по налогу В с продаж в чеке                       : 0.00
+    97.Оборот по налогу В с покупок в чеке                      : 0.00
+    98.Оборот по налогу В с возврата продаж в чеке              : 0.00
+    99.Оборот по налогу В с возврата покупок в чеке             : 0.00
+    100.Оборот по налогу Г с продаж в чеке                       : 0.00
+    101.Оборот по налогу Г с покупок в чеке                      : 0.00
+    102.Оборот по налогу Г с возврата продаж в чеке              : 0.00
+    103.Оборот по налогу Г с возврата покупок в чеке             : 0.00    
+    
+    4192.Оборот по налогу 18/118 с продаж в чеке                  : 0.00
+    4193.Оборот по налогу 18/118 с покупок в чеке                 : 0.00
+    4194.Оборот по налогу 18/118 с возврата продаж в чеке         : 0.00
+    4195.Оборот по налогу 18/118 с возврата покупок в чеке        : 0.00
+    4196.Оборот по налогу 10/110 с продаж в чеке                  : 0.00
+    4197.Оборот по налогу 10/110 с покупок в чеке                 : 0.00
+    4198.Оборот по налогу 10/110 с возврата продаж в чеке         : 0.00
+    4199.Оборот по налогу 10/110 с возврата покупок в чеке        : 0.00
+     */
+    public long calculateTaxAmount(int index, int tax, int discount) throws Exception {
+        long result = 0;
+        if ((index < 0) || (index > 5)) {
+            throw new Exception("Invalid tax index, must be 0..5");
+        }
+
+        int taxRate = getDevice().getTaxRate(index + 1);
+        int[] cashRegNumber = {88, 92, 96, 100, 4192, 4196};
+        long amount = getDevice().readCashRegister(cashRegNumber[index] + receiptType);
+        if ((tax - 1) == index) {
+            amount = amount - discount;
+        }
+        if (taxRate == 0) {
+            result = amount;
+        } else 
+        {
+            double taxAmount = ((double)amount) * taxRate / (10000 + taxRate);
+            result = Math.round(taxAmount);
+        }
+        return result;
+    }
+
     public void endFiscalReceipt(boolean printHeader) throws Exception {
         if (isOpened) {
             processTLVItems();
@@ -420,7 +472,7 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
                 addItemsDiscounts();
             }
             updateReceiptItems();
-            if (getParams().writeTagMode == FptrParameters.WRITE_TAG_MODE_BEFORE_ITEMS) {
+            if (getParams().writeTagMode == SmFptrConst.WRITE_TAG_MODE_BEFORE_ITEMS) {
                 printTLVItems();
             }
 
@@ -430,7 +482,7 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
                 printReceiptItems();
             }
 
-            if (getParams().writeTagMode == FptrParameters.WRITE_TAG_MODE_AFTER_ITEMS) {
+            if (getParams().writeTagMode == SmFptrConst.WRITE_TAG_MODE_AFTER_ITEMS) {
                 printTLVItems();
             }
 
@@ -469,10 +521,15 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
                 for (int i = 0; i < payments.length; i++) {
                     closeReceipt.setPayment(i, payments[i]);
                 }
+                int taxNumber = (int) getParams().taxAmount[0];
+                if (getParams().taxCalculation == SmFptrConst.TAX_CALCULATION_DRIVER) {
+                    for (int i = 0; i < 6; i++) {
+                        getParams().taxAmount[i] = calculateTaxAmount(i, taxNumber, discountAmount);
+                    }
+                }
                 for (int i = 0; i < 6; i++) {
                     closeReceipt.setTaxValue(i, getParams().taxAmount[i]);
                 }
-
                 closeReceipt.setDiscount(discountAmount);
                 closeReceipt.setTaxSystem(getParams().taxSystem);
                 closeReceipt.setText(getParams().closeReceiptText);
@@ -491,10 +548,13 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
                     closeParams.setTax4(0);
                     closeParams.setDiscount(discountAmount);
                     closeParams.setText(getParams().closeReceiptText);
-                    getDevice().closeReceipt(closeParams);
-                } else {
-                    getDevice().check(rc);
+
+                    EndFiscalReceipt command = new EndFiscalReceipt();
+                    command.setPassword(getDevice().getUsrPassword());
+                    command.setParams(closeParams);
+                    rc = getDevice().closeReceipt(command);
                 }
+                getDevice().check(rc);
 
                 try {
                     getFiscalDay().closeFiscalRec();
@@ -754,26 +814,14 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
                 vatInfo, description);
     }
 
-    private String formatStrings(String line1, String line2) throws Exception {
-        int len;
-        String S = "";
-        len = getDevice().getMessageLength() - line2.length();
-
-        for (int i = 0; i < len; i++) {
-            if (i < line1.length()) {
-                S = S + line1.charAt(i);
-            } else {
-                S = S + " ";
-            }
-        }
-        return S + line2;
-    }
-
     public void printRecSubtotal(long amount) throws Exception {
         checkTotal(getSubtotal(), amount);
         if (getParams().subtotalTextEnabled) {
-            addTextItem(formatStrings(getParams().subtotalText,
-                    "=" + StringUtils.amountToString(getSubtotal())));
+            String text = StringUtils.alignLines(
+                    getParams().subtotalText,
+                    "=" + StringUtils.amountToString(getSubtotal()),
+                    getDevice().getMessageLength(getParams().subtotalFont));
+            addTextItem(text, getParams().subtotalFont);
         }
     }
 
@@ -1453,4 +1501,5 @@ public class FSSalesReceipt extends CustomReceipt implements FiscalReceipt {
     public void setItemBarcode(GS1Barcode barcode) throws Exception {
         this.barcode = barcode;
     }
+
 }

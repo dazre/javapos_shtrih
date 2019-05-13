@@ -884,29 +884,36 @@ public class SMFiscalPrinterImpl implements SMFiscalPrinter, PrinterConst {
     }
 
     public EndFiscalReceipt closeReceipt(CloseRecParams params)
-            throws Exception {
-        logger.debug("closeReceipt");
+            throws Exception 
+    {
         EndFiscalReceipt command = new EndFiscalReceipt();
         command.setPassword(usrPassword);
         command.setParams(params);
-        int resultCode = executeCommand(command);
-        if (resultCode == 168) {
-            ReadEJStatus command2 = new ReadEJStatus();
-            command2.setPassword(sysPassword);
-            int resultCode2 = executeCommand(command2);
-            if (resultCode2 == 0) {
-                logger.debug("EJ date: "
-                        + command2.getStatus().getDocDate().toString());
-                logger.debug("EJ time: "
-                        + command2.getStatus().getDocTime().toString());
-            }
-        }
-        check(resultCode);
+        check(closeReceipt(command));
         return command;
     }
 
-    public int fsCloseReceipt(FSCloseReceipt command) throws Exception 
-    {
+    public int closeReceipt(EndFiscalReceipt command)
+            throws Exception {
+        logger.debug("closeReceipt");
+        writeTLVItems();
+
+        int rc = executeCommand(command);
+        if (rc == 168) {
+            ReadEJStatus command2 = new ReadEJStatus();
+            command2.setPassword(sysPassword);
+            int rc2 = executeCommand(command2);
+            if (rc2 == 0) {
+                logger.debug("EJ date: " + command2.getStatus().getDocDate().toString());
+                logger.debug("EJ time: " + command2.getStatus().getDocTime().toString());
+            }
+        }
+        return rc;
+    }
+
+    public int fsCloseReceipt(FSCloseReceipt command) throws Exception {
+        writeTLVItems();
+
         lastDocNumber = 0;
         lastMacValue = 0;
         int rc = executeCommand(command);
@@ -1120,6 +1127,7 @@ public class SMFiscalPrinterImpl implements SMFiscalPrinter, PrinterConst {
         if (capFSPrintItem) {
             int rc = fsPrintRecItem2(1, item);
             if (isCommandSupported(rc)) {
+                check(rc);
                 return;
             }
         }
@@ -1425,6 +1433,7 @@ public class SMFiscalPrinterImpl implements SMFiscalPrinter, PrinterConst {
 
             if (capOpenReceipt) {
                 check(rc);
+                writeTLVItems();
             }
         }
     }
@@ -3228,7 +3237,7 @@ public class SMFiscalPrinterImpl implements SMFiscalPrinter, PrinterConst {
     }
 
     public byte[] processTLVBeforeReceipt(byte[] tlv) throws Exception {
-        if (params.userExtendedTagPrintMode != FptrParameters.USER_EXTENDED_TAG_PRINT_MODE_DRIVER) {
+        if (params.userExtendedTagPrintMode != SmFptrConst.USER_EXTENDED_TAG_PRINT_MODE_DRIVER) {
             return tlv;
         }
         TLVParser reader = new TLVParser();
@@ -3246,7 +3255,7 @@ public class SMFiscalPrinterImpl implements SMFiscalPrinter, PrinterConst {
     }
 
     public byte[] filterTLV(byte[] tlv) throws Exception {
-        if (params.userExtendedTagPrintMode == FptrParameters.USER_EXTENDED_TAG_PRINT_MODE_DRIVER) {
+        if (params.userExtendedTagPrintMode == SmFptrConst.USER_EXTENDED_TAG_PRINT_MODE_DRIVER) {
             TLVParser reader = new TLVParser();
             reader.read(tlv);
             TLVItems items = reader.getItems();
@@ -3265,7 +3274,7 @@ public class SMFiscalPrinterImpl implements SMFiscalPrinter, PrinterConst {
                 }
             }
             return reader.write();
-        } else if (params.userExtendedTagPrintMode == FptrParameters.USER_EXTENDED_TAG_PRINT_MODE_PRINTER) {
+        } else if (params.userExtendedTagPrintMode == SmFptrConst.USER_EXTENDED_TAG_PRINT_MODE_PRINTER) {
             TLVParser reader = new TLVParser();
             reader.read(tlv);
             TLVItems items = reader.getItems();
@@ -3501,9 +3510,13 @@ public class SMFiscalPrinterImpl implements SMFiscalPrinter, PrinterConst {
         return command.getData();
     }
 
+    public void printLines(String line1, String line2, FontNumber font) throws Exception {
+        String text = StringUtils.alignLines(line1, line2, getMessageLength(font));
+        printText(SMFP_STATION_REC, text, font);
+    }
+
     public void printLines(String line1, String line2) throws Exception {
-        String text = StringUtils.alignLines(line1, line2, getMessageLength());
-        printText(text);
+        printLines(line1, line2, params.font);
     }
 
     public void printLines2(String line1, String line2) throws Exception {
@@ -4551,9 +4564,9 @@ public class SMFiscalPrinterImpl implements SMFiscalPrinter, PrinterConst {
         TLVWriter writer = new TLVWriter();
         ByteArrayOutputStream os = new ByteArrayOutputStream();
         switch (params.itemMarkType) {
-            case FptrParameters.MARK_TYPE_FUR:
-            case FptrParameters.MARK_TYPE_DRUGS:
-            case FptrParameters.MARK_TYPE_TOBACCO:
+            case SmFptrConst.MARK_TYPE_FUR:
+            case SmFptrConst.MARK_TYPE_DRUGS:
+            case SmFptrConst.MARK_TYPE_TOBACCO:
 
                 if (serial.length() > 24) {
                     serial = barcode.serial.substring(0, 24);
@@ -4566,12 +4579,12 @@ public class SMFiscalPrinterImpl implements SMFiscalPrinter, PrinterConst {
                 buf.order(ByteOrder.BIG_ENDIAN);
                 buf.putShort((short) params.itemMarkType);
                 ba = longToBytes(Long.parseLong(barcode.GTIN));
-                buf.put(ba, 0, 6);
+                buf.put(ba, 2, 6);
                 buf.put(serial.getBytes());
                 writer.add(1162, buf.array());
                 return fsWriteOperationTLV(writer.getBytes());
 
-            case FptrParameters.MARK_TYPE_SHOES:
+            case SmFptrConst.MARK_TYPE_SHOES:
 
                 if (serial.length() > 13) {
                     serial = barcode.serial.substring(0, 13);
@@ -4584,7 +4597,7 @@ public class SMFiscalPrinterImpl implements SMFiscalPrinter, PrinterConst {
                 buf.order(ByteOrder.BIG_ENDIAN);
                 buf.putShort((short) params.itemMarkType);
                 ba = longToBytes(Long.parseLong(barcode.GTIN));
-                buf.put(ba, 0, 6);
+                buf.put(ba, 2, 6);
                 buf.put(serial.getBytes());
                 writer.add(1162, buf.array());
                 return fsWriteOperationTLV(writer.getBytes());
@@ -4657,4 +4670,20 @@ public class SMFiscalPrinterImpl implements SMFiscalPrinter, PrinterConst {
     public long getLastMacValue() {
         return lastMacValue;
     }
+
+    private String formatStrings(String line1, String line2) throws Exception {
+        int len;
+        String S = "";
+        len = getMessageLength() - line2.length();
+
+        for (int i = 0; i < len; i++) {
+            if (i < line1.length()) {
+                S = S + line1.charAt(i);
+            } else {
+                S = S + " ";
+            }
+        }
+        return S + line2;
+    }
+
 }
